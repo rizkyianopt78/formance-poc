@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy-config
+  namespace: formance-sit
+data:
+  Caddyfile: |
+    (cors) {
+      header {
+        Access-Control-Allow-Methods "GET,OPTIONS,PUT,POST,DELETE,HEAD,PATCH"
+        Access-Control-Allow-Headers content-type
+        Access-Control-Max-Age 100
+        Access-Control-Allow-Origin *
+        defer
+      }
+    }
+
+    (handle_path_route_without_auth) {
+      # handle_path automatically strips the prefix from the request path
+      handle_path {args.0}* {
+        reverse_proxy {args.1}
+
+        import cors
+
+      }
+    }
+
+    {
+      order versions after metrics
+
+      debug
+    }
+
+    :8080 {
+      import handle_path_route_without_auth "/api/ledger" "ledger:3068"
+      import handle_path_route_without_auth "/api/payments" "payments:8080"
+      import handle_path_route_without_auth "/api/reconciliation" "reconciliation:8080"
+
+      # auth
+      import handle_path_route_without_auth "/api/auth" "auth:8080"
+
+      # flows: accessible as /api/orchestration (per Formance docs) AND /api/flows
+      import handle_path_route_without_auth "/api/orchestration" "flows:8080"
+      import handle_path_route_without_auth "/api/flows" "flows:8080"
+
+      # wallets
+      import handle_path_route_without_auth "/api/wallets" "wallets:8080"
+
+      handle /versions {
+        versions {
+          region "local"
+          env "local"
+          endpoints {
+            # ledger: _info is at /v2/_info, healthcheck is at /_healthcheck (root)
+            ledger /api/ledger/v2/_info /api/ledger/_healthcheck
+            payments /api/payments/_info /api/payments/_healthcheck
+            reconciliation /api/reconciliation/_info /api/reconciliation/_healthcheck
+            auth /api/auth/_info /api/auth/_healthcheck
+            orchestration /api/orchestration/_info /api/orchestration/_healthcheck
+            wallets /api/wallets/_info /api/wallets/_healthcheck
+          }
+        }
+      }
+
+
+      # handle all other requests
+      handle {
+        respond "Bad Gateway" 502
+      }
+
+    }
+
+    localhost:8443, gateway:8443 {
+      import handle_path_route_without_auth "/api/ledger" "ledger:3068"
+
+      handle /versions {
+        versions {
+          region "local"
+          env "local"
+          endpoints {
+            ledger /api/ledger/_info /api/ledger/_healthcheck
+          }
+        }
+      }
+
+      # handle all other requests
+      handle {
+        respond "Bad Gateway" 502
+      }
+      tls internal
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      initContainers:
+        - name: wait-for-ledger
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z ledger 3068; do
+                echo "Waiting for ledger..."; sleep 2;
+              done
+      containers:
+        - name: gateway
+          image: ghcr.io/formancehq/gateway:v2.0.31
+          ports:
+            - containerPort: 8080
+            - containerPort: 8443
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: caddy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: formance-sit
+spec:
+  selector:
+    app: gateway
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+    - name: https
+      port: 8443
+      targetPort: 8443
+      nodePort: 30443

@@ -1,0 +1,14 @@
+name: send-money
+stages:
+  - send:
+      source:
+        account:
+          id: "world"
+          ledger: "test"
+      destination:
+        account:
+          id: "user:001"
+          ledger: "test"
+      amount:
+        amount: 1000
+        asset: "USD/2"

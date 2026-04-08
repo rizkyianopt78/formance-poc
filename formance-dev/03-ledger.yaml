@@ -1,0 +1,320 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Waiting for postgres..."; sleep 2;
+              done
+      containers:
+        - name: ledger
+          image: ghcr.io/formancehq/ledger:v2.4.3
+          ports:
+            - containerPort: 3068
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: "5m"
+            - name: EXPERIMENTAL_FEATURES
+              value: "true"
+            - name: AUTO_UPGRADE
+              value: "true"
+            - name: BULK_PARALLEL
+              value: "10"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER
+              value: "true"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER_FLAGS
+              value: "experimental-overdraft-function experimental-get-asset-function experimental-get-amount-function experimental-oneof experimental-account-interpolation experimental-mid-script-function-call experimental-asset-colors"
+            # Enable pipelines/exporters API endpoints
+            - name: EXPERIMENTAL_EXPORTERS
+              value: "true"
+            # Run the replication worker embedded (required for pipelines)
+            - name: WORKER
+              value: "true"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger
+  namespace: formance-sit
+spec:
+  selector:
+    app: ledger
+  ports:
+    - name: http
+      port: 3068
+      targetPort: 3068
+
+---
+########################
+# PAYMENTS
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+    spec:
+      initContainers:
+        - name: create-payments-schema
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "Creating payments schema if not exists..."
+              PGPASSWORD=ledger psql -h postgres -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS payments;"
+              echo "Schema ready."
+        - name: wait-for-temporal
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z temporal 7233; do
+                echo "Waiting for Temporal..."; sleep 3;
+              done
+      containers:
+        - name: payments
+          image: ghcr.io/formancehq/payments:latest
+          args:
+            - serve
+            - --auto-migrate
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CONFIG_ENCRYPTION_KEY
+              value: "my-secret-key-123"
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/payments?sslmode=disable"
+            - name: STORAGE_POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/payments?sslmode=disable"
+            - name: TEMPORAL_ADDRESS
+              value: "temporal:7233"
+            - name: STACK_PUBLIC_URL
+              value: "http://gateway:8080"
+          volumeMounts:
+            # DUMMYPAY connector requires a real directory path on the pod filesystem
+            - name: dummypay-data
+              mountPath: /data/dummypay
+      volumes:
+        - name: dummypay-data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments
+  namespace: formance-sit
+spec:
+  selector:
+    app: payments
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+########################
+# RECONCILIATION
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reconciliation
+  template:
+    metadata:
+      labels:
+        app: reconciliation
+    spec:
+      containers:
+        - name: reconciliation
+          image: ghcr.io/formancehq/reconciliation:latest
+          args:
+            - serve
+            - --auto-migrate
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_URI
+              value: postgres://ledger:ledger@postgres:5432/ledger?sslmode=disable&search_path=reconciliations
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reconciliation
+  namespace: formance-sit
+spec:
+  selector:
+    app: reconciliation
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+# Exchange service removed — ghcr.io/formancehq/exchange:latest image does not exist on GHCR
+
+---
+########################
+# AUTH
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: ghcr.io/formancehq/auth:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: formance-sit
+spec:
+  selector:
+    app: auth
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+
+---
+########################
+# TEMPORAL
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal
+  template:
+    metadata:
+      labels:
+        app: temporal
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Waiting for Postgres..."; sleep 2;
+              done
+      containers:
+        - name: temporal
+          image: temporalio/auto-setup:1.22.3
+          ports:
+            - containerPort: 7233
+          env:
+            # DB type must be 'postgresql' (not 'temporal')
+            - name: DB
+              value: "postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "ledger"
+            - name: POSTGRES_PWD
+              value: "ledger"
+            # POSTGRES_SEEDS must be the host of postgres service (not 'temporal')
+            - name: POSTGRES_SEEDS
+              value: "postgres"
+            - name: ENABLE_ES
+              value: "false"
+            # Skip missing dynamic config file
+            - name: DYNAMIC_CONFIG_FILE_PATH
+              value: "/etc/temporal/config/dynamicconfig.yaml"
+          volumeMounts:
+            - name: dynamic-config
+              mountPath: /etc/temporal/config/dynamicconfig.yaml
+              subPath: dynamicconfig.yaml
+      volumes:
+        - name: dynamic-config
+          configMap:
+            name: temporal-dynamic-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-dynamic-config
+  namespace: formance-sit
+data:
+  dynamicconfig.yaml: |
+    # empty dynamic config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal
+  namespace: formance-sit
+spec:
+  selector:
+    app: temporal
+  ports:
+    - port: 7233
+      targetPort: 7233

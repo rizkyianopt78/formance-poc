@@ -1,0 +1,6 @@
+apiVersion: formance.com/v1beta1
+kind: Stack
+metadata:
+  name: formance-dev
+spec:
+  versionsFromFile: v2.0

@@ -1,0 +1,29 @@
+# values.yaml
+postgresql:
+  enabled: false # Disable bundled PostgreSQL
+
+global:
+  postgresql:
+    host: "host.docker.internal"
+    port: 5432
+    additionalArgs: "sslmode=disable"
+    auth:
+      username: "postgres"
+      password: "password"
+      database: "formance"
+
+regions:
+  operator:
+    enabled: true
+  versions:
+    create: true
+  settings:
+    postgres-uri:
+      key: "postgres.uri"
+      value: "postgresql://postgres:password@host.docker.internal:5432/formance?sslmode=disable"
+
+autoscaling:
+  enabled: false
+
+traefik:
+  enabled: false

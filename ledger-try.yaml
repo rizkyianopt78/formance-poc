@@ -1,0 +1,271 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: formance-dev
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: formance-dev
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: formance-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          args:
+            - -c
+            - max_connections=200
+            - -c
+            - log_min_messages=info
+          env:
+            - name: POSTGRES_USER
+              value: ledger
+            - name: POSTGRES_PASSWORD
+              value: ledger
+            - name: POSTGRES_DB
+              value: ledger
+            - name: PGDATA
+              value: /data/postgres
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /data/postgres
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "ledger"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: formance-dev
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: formance-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/formancehq/ledger:v2.4.0
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: postgresql://ledger:ledger@postgres/ledger?sslmode=disable
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: 5m
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: formance-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      containers:
+        - name: ledger
+          image: ghcr.io/formancehq/ledger:v2.4.0
+          ports:
+            - containerPort: 3068
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: postgresql://ledger:ledger@postgres/ledger?sslmode=disable
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: 5m
+            - name: EXPERIMENTAL_FEATURES
+              value: "true"
+            - name: AUTO_UPGRADE
+              value: "true"
+            - name: BULK_PARALLEL
+              value: "10"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER
+              value: "true"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER_FLAGS
+              value: "experimental-overdraft-function experimental-get-asset-function experimental-get-amount-function experimental-oneof experimental-account-interpolation experimental-mid-script-function-call experimental-asset-colors"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger
+  namespace: formance-dev
+spec:
+  selector:
+    app: ledger
+  ports:
+    - name: http
+      port: 3068
+      targetPort: 3068
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy-config
+  namespace: formance-dev
+data:
+  Caddyfile: |
+    :8080 {
+        reverse_proxy ledger:3068
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: formance-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/formancehq/gateway:v2.0.31
+          ports:
+            - containerPort: 8080
+            - containerPort: 8443
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: caddy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: formance-dev
+spec:
+  selector:
+    app: gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: https
+      port: 8443
+      targetPort: 8443
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  namespace: formance-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: console
+  template:
+    metadata:
+      labels:
+        app: console
+    spec:
+      containers:
+        - name: console
+          image: ghcr.io/formancehq/console-v3:v2.2.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: MICRO_STACK
+              value: "1"
+            - name: API_STACK_URL
+              value: http://gateway:8080
+            - name: COOKIE_SECRET
+              value: secret
+            - name: COOKIE_DOMAIN
+              value: localhost
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: console
+  namespace: formance-dev
+spec:
+  selector:
+    app: console
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: NodePort

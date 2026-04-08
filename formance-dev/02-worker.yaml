@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Waiting for postgres..."; sleep 2;
+              done
+      containers:
+        - name: worker
+          image: ghcr.io/formancehq/ledger:v2.4.0
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: "5m"

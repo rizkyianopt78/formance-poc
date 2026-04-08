@@ -1,0 +1,135 @@
+---
+# ============================================================
+# Formance Gateway - Kubernetes Manifests
+# Uses a custom Caddyfile (via ConfigMap) to avoid the
+# 'unrecognized option: topic_name' error caused by the
+# built-in audit/NATS block in the default Caddyfile.
+#
+# Routes:
+#   /api/ledger/* → ledger service (formance-dev namespace)
+#   /versions     → versions endpoint
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-caddyfile
+  namespace: formance-dev
+data:
+  Caddyfile: |
+    {
+      order versions after metrics
+      debug
+    }
+
+    :8080 {
+      # -------------------------------------------------------
+      # Ledger API reverse proxy
+      # Formance Operator creates the ledger service as:
+      #   <stack-name>-ledger.<namespace>.svc.cluster.local:8080
+      # Adjust the address below if your service name differs.
+      # -------------------------------------------------------
+      handle_path /api/ledger* {
+        reverse_proxy ledger.formance-dev.svc.cluster.local:8080
+      }
+
+      # -------------------------------------------------------
+      # Versions endpoint
+      # -------------------------------------------------------
+      handle /versions {
+        versions {
+          region "local"
+          env "dev"
+          endpoints {
+            ledger http://ledger.formance-dev.svc.cluster.local:8080/_info http://ledger.formance-dev.svc.cluster.local:8080/_healthcheck
+          }
+        }
+      }
+
+      # Catch-all for unhandled API routes
+      handle /api/* {
+        respond "Bad Gateway" 502
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: formance-dev
+  labels:
+    app: gateway
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/component: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/formancehq/gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Mount the custom Caddyfile, overriding the built-in one
+          # that fails with 'unrecognized option: topic_name'
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /versions
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /versions
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: gateway-caddyfile
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: formance-dev
+  labels:
+    app: gateway
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
