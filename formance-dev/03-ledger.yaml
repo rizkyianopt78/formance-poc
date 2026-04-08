@@ -167,6 +167,16 @@ spec:
       labels:
         app: reconciliation
     spec:
+      initContainers:
+        - name: create-reconciliation-schema
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "Creating reconciliations schema if not exists..."
+              PGPASSWORD=ledger psql -h postgres -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS reconciliations;"
+              echo "Schema ready."
       containers:
         - name: reconciliation
           image: ghcr.io/formancehq/reconciliation:latest
