@@ -11,5 +11,7 @@ spec:
     services:
     - name: console
       port: 3000
+    middlewares:
+    - name: redirect-https
   tls:
     certResolver: myresolver
