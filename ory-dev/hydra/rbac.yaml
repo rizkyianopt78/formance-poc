@@ -1,0 +1,24 @@
+# Source: hydra/charts/hydra-maester/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hydra-hydra-maester-account
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: hydra-maester
+    helm.sh/chart: hydra-maester-0.61.1
+    app.kubernetes.io/instance: hydra
+    app.kubernetes.io/version: "v0.0.41"
+---
+# Source: hydra/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hydra
+  namespace: ory-sit
+  labels:
+    "app.kubernetes.io/name": "hydra"
+    "app.kubernetes.io/instance": "hydra"
+    "app.kubernetes.io/version": "v26.2.0"
+    "helm.sh/chart": "hydra-0.61.1"
+automountServiceAccountToken: false
