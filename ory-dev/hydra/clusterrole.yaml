@@ -1,0 +1,25 @@
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: hydra-hydra-maester-role
+rules:
+  - apiGroups: ["hydra.ory.sh"]
+    resources: ["oauth2clients", "oauth2clients/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["list", "watch", "create"]
+---
+# Source: hydra/charts/hydra-maester/templates/rbac.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: hydra-hydra-maester-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: hydra-hydra-maester-account # Service account assigned to the controller pod.
+    namespace: ory-sit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hydra-hydra-maester-role

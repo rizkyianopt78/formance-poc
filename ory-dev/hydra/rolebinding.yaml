@@ -1,0 +1,13 @@
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: hydra-hydra-maester-role-binding
+  namespace: ory-sit
+subjects:
+  - kind: ServiceAccount
+    name: hydra-hydra-maester-account # Service account assigned to the controller pod.
+    namespace: ory-sit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hydra-hydra-maester-role
