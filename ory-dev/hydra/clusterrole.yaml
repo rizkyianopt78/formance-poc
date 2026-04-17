@@ -18,7 +18,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: hydra-hydra-maester-account # Service account assigned to the controller pod.
-    namespace: ory-sit
+    namespace: ory-dev
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

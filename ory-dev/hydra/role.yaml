@@ -2,7 +2,7 @@ kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: hydra-hydra-maester-role
-  namespace: ory-sit
+  namespace: ory-dev
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
