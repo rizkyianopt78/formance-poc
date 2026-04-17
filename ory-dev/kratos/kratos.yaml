@@ -1,6 +1,6 @@
 kratos:
   config:
-    dsn: postgres://ory:ory@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/kratos?sslDisable=false
+    dsn: postgres://ory:ory@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com:5432/kratos?sslmode=disable
 
     secrets:
       default:
