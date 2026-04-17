@@ -13,6 +13,9 @@ kratos:
         path: /
         same_site: Lax
 
+    oauth2_provider:
+      url: http://hydra-admin:4445
+
     selfservice:
       default_browser_return_url: http://localhost:3800
 
@@ -28,7 +31,7 @@ kratos:
                 provider: google
                 client_id:
                 client_secret:
-                mapper_url: base64://bG9jYWwgY2xhaW1zID0gewogIGVtYWlsX3ZlcmlmaWVkOiBmYWxzZSwKfSArIHN0ZC5leHRWYXIoJ2NsYWltcycpOwoKewogIGlkZW50aXR5OiB7CiAgICB0cmFpdHM6IHsKICAgICAgZW1haWw6IGNsYWltcy5lbWFpbCwKICAgICAgbmFtZTogY2xhaW1zLm5hbWUsCiAgICAgIHBpY3R1cmU6IGNsYWltcy5waWN0dXJlCiAgICB9LAogIH0sCn0=
+                mapper_url: base64://bG9jYWwgY2xhaW1zID0gewogIGVtYWlsX3ZlcmlmaWVkOiBmYWxzZSwKfSArIHN0ZC5leHRWYXIoJ2NsYWltcycpOwoKewogIGlkZW50aXR5OiB7CiAgICB0cmFpdHM6IHsKICAgICAgZW1haWw6IGNsYWltcy5lbWFpbCwKICAgICAgbmFtZTogY2xhaW1zLm5hbWUKICAgIH0sCiAgfSwKfQ==
                 scope:
                   - openid
                   - email
@@ -39,6 +42,10 @@ kratos:
           ui_url: http://localhost:3800/auth/signin
         registration:
           ui_url: http://localhost:3800/auth/signup
+          after:
+            password:
+              hooks:
+                - hook: session
         error:
           ui_url: http://localhost:3800/auth/signin
 
@@ -46,7 +53,7 @@ kratos:
       default_schema_id: default
       schemas:
         - id: default
-          url: base64://ewogICJ0eXBlIjogIm9iamVjdCIsCiAgInByb3BlcnRpZXMiOiB7CiAgICAidHJhaXRzIjogewogICAgICAidHlwZSI6ICJvYmplY3QiLAogICAgICAicHJvcGVydGllcyI6IHsKICAgICAgICAiZW1haWwiOiB7CiAgICAgICAgICAidHlwZSI6ICJzdHJpbmciLAogICAgICAgICAgImZvcm1hdCI6ICJlbWFpbCIsCiAgICAgICAgICAib3J5LmtyYXRvcy5zY2hlbWEiOiB7CiAgICAgICAgICAgICJpZGVudGlmaWVyIjogdHJ1ZQogICAgICAgICAgfQogICAgICAgIH0sCiAgICAgICAgIm5hbWUiOiB7CiAgICAgICAgICAidHlwZSI6ICJzdHJpbmciCiAgICAgICAgfSwKICAgICAgICAicGljdHVyZSI6IHsKICAgICAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICAgICAiZm9ybWF0IjogInVyaSIKICAgICAgICB9CiAgICAgIH0sCiAgICAgICJyZXF1aXJlZCI6IFsiZW1haWwiXQogICAgfQogIH0sCiAgInJlcXVpcmVkIjogWyJ0cmFpdHMiXQp9
+          url: base64://ewogICIkaWQiOiAiaHR0cHM6Ly9zY2hlbWFzLmV4YW1wbGUuY29tL2lkZW50aXR5LnNjaGVtYS5qc29uIiwKICAidHlwZSI6ICJvYmplY3QiLAogICJwcm9wZXJ0aWVzIjogewogICAgInRyYWl0cyI6IHsKICAgICAgInR5cGUiOiAib2JqZWN0IiwKICAgICAgInByb3BlcnRpZXMiOiB7CiAgICAgICAgImVtYWlsIjogewogICAgICAgICAgInR5cGUiOiAic3RyaW5nIiwKICAgICAgICAgICJmb3JtYXQiOiAiZW1haWwiLAogICAgICAgICAgIm9yeS5zaC9rcmF0b3MiOiB7CiAgICAgICAgICAgICJjcmVkZW50aWFscyI6IHsKICAgICAgICAgICAgICAicGFzc3dvcmQiOiB7CiAgICAgICAgICAgICAgICAiaWRlbnRpZmllciI6IHRydWUKICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0sCiAgICAgICAgICAgICJ2ZXJpZmljYXRpb24iOiB7CiAgICAgICAgICAgICAgInZpYSI6ICJlbWFpbCIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgInJlY292ZXJ5IjogewogICAgICAgICAgICAgICJ2aWEiOiAiZW1haWwiCiAgICAgICAgICAgIH0KICAgICAgICAgIH0KICAgICAgICB9LAogICAgICAgICJuYW1lIjogewogICAgICAgICAgInR5cGUiOiAic3RyaW5nIiwKICAgICAgICAgICJtaW5MZW5ndGgiOiAyCiAgICAgICAgfQogICAgICB9LAogICAgICAicmVxdWlyZWQiOiBbImVtYWlsIiwgIm5hbWUiXQogICAgfQogIH0sCiAgInJlcXVpcmVkIjogWyJ0cmFpdHMiXQp9
 
     courier:
       delivery_strategy: smtp
