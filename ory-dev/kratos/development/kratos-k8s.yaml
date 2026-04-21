@@ -1,0 +1,497 @@
+# =============================================================================
+# Kratos - Complete Kubernetes Manifests
+# Includes: Namespace, ServiceAccount, Secret, ConfigMaps, Deployment, Services
+# =============================================================================
+
+---
+# 1. Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+
+---
+# 2. ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kratos
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+automountServiceAccountToken: false
+
+---
+# 3. Secret - DSN, session secrets, SMTP
+#    Replace the values below with your real credentials.
+#    Values are plain-text strings; Kubernetes will encode them automatically.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kratos
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+type: Opaque
+stringData:
+  dsn: "postgres://ory:ory@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com:5432/kratos?sslmode=disable"
+  secretsDefault: "supersecretkey12345super"
+  secretsCookie: "anotherverysecretkey12345"
+  smtpConnectionUri: "smtps://user:pass@mailhog:1025/?skip_ssl_verify=true"
+
+---
+# 4. ConfigMap - Google OIDC mapper (plain Jsonnet, NOT base64)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-google-mapper
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  google.mapper.jsonnet: |
+    local claims = {
+      email_verified: false,
+    } + std.extVar('claims');
+
+    {
+      identity: {
+        traits: {
+          email: claims.email,
+          name: claims.name,
+        },
+      },
+    }
+
+---
+# 5. ConfigMap - Identity schema (plain JSON, NOT base64)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-identity-schema
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  password.schema.json: |
+    {
+      "$id": "https://schemas.example.com/identity.schema.json",
+      "type": "object",
+      "properties": {
+        "traits": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "ory.sh/kratos": {
+                "credentials": {
+                  "password": {
+                    "identifier": true
+                  }
+                },
+                "verification": {
+                  "via": "email"
+                },
+                "recovery": {
+                  "via": "email"
+                }
+              }
+            },
+            "name": {
+              "type": "string",
+              "minLength": 2
+            }
+          },
+          "required": ["email", "name"]
+        }
+      },
+      "required": ["traits"]
+    }
+
+---
+# 6. ConfigMap - Main Kratos configuration
+#    mapper_url references the file mounted from kratos-google-mapper ConfigMap
+#    identity schema url references the file mounted from kratos-identity-schema ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-config
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  kratos.yaml: |
+    version: v0.13.0
+
+    dsn: $(DSN)
+
+    secrets:
+      default:
+        - $(SECRETS_DEFAULT)
+      cookie:
+        - $(SECRETS_COOKIE)
+    # NOTE: omit secrets.cipher entirely when not in use;
+    # setting it to an empty value causes a validation error
+
+    session:
+      cookie:
+        domain: localhost
+        path: /
+        same_site: Lax
+
+    oauth2_provider:
+      url: http://hydra-admin:4445
+
+    selfservice:
+      default_browser_return_url: https://webapp.netwallet.dev/
+
+      methods:
+        password:
+          enabled: true
+
+        oidc:
+          enabled: true
+          config:
+            providers:
+              - id: google
+                provider: google
+                client_id: 
+                client_secret: 
+                mapper_url: file:///etc/config/google-mapper/google.mapper.jsonnet
+                scope:
+                  - openid
+                  - email
+                  - profile
+
+      flows:
+        login:
+          ui_url: https://webapp.netwallet.dev/auth/signin
+        registration:
+          ui_url: https://webapp.netwallet.dev/auth/signup
+          after:
+            password:
+              hooks:
+                - hook: session
+        error:
+          ui_url: https://webapp.netwallet.dev//auth/signin
+
+    identity:
+      default_schema_id: default
+      schemas:
+        - id: default
+          url: file:///etc/config/identity-schema/password.schema.json
+
+    courier:
+      delivery_strategy: smtp
+      smtp:
+        connection_uri: $(COURIER_SMTP_CONNECTION_URI)
+
+    serve:
+      public:
+        base_url: https://auth.netwallet.dev
+        port: 4433
+        cors:
+          enabled: true
+          allowed_origins:
+            - https://webapp.netwallet.dev/
+          allowed_methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+          allowed_headers:
+            - Authorization
+            - Cookie
+            - Content-Type
+          exposed_headers:
+            - Content-Type
+            - Set-Cookie
+            - Location
+          allow_credentials: true
+
+      admin:
+        base_url: https://kratosadmin.intra.netwallet.dev
+        port: 4434
+
+---
+# 7. Deployment - Kratos
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+    app.kubernetes.io/version: v26.2.0
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 3600
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kratos
+      app.kubernetes.io/instance: kratos
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kratos
+        app.kubernetes.io/instance: kratos
+        app.kubernetes.io/version: v26.2.0
+    spec:
+      serviceAccountName: kratos
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Auto-migration init container runs "kratos migrate sql" before the main
+      # container starts. This replaces the Helm pre-install Job hook.
+      initContainers:
+        - name: kratos-automigrate
+          image: docker.io/oryd/kratos:v26.2.0
+          imagePullPolicy: IfNotPresent
+          command: ["kratos"]
+          args:
+            - migrate
+            - sql
+            - up
+            - --read-from-env
+            - --yes
+            - --config
+            - /etc/config/kratos/kratos.yaml
+          env:
+            - name: DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: dsn
+            - name: SECRETS_DEFAULT
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsDefault
+                  optional: true
+            - name: SECRETS_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsCookie
+                  optional: true
+            - name: COURIER_SMTP_CONNECTION_URI
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: smtpConnectionUri
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+
+      containers:
+        - name: kratos
+          image: docker.io/oryd/kratos:v26.2.0
+          imagePullPolicy: IfNotPresent
+          command: ["kratos"]
+          args:
+            - serve
+            - all
+            - --config
+            - /etc/config/kratos/kratos.yaml
+
+          env:
+            - name: DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: dsn
+            - name: SECRETS_DEFAULT
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsDefault
+                  optional: true
+            - name: SECRETS_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsCookie
+                  optional: true
+            # SECRETS_CIPHER intentionally omitted — must not be set to empty
+            - name: COURIER_SMTP_CONNECTION_URI
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: smtpConnectionUri
+
+          ports:
+            - name: http-public
+              containerPort: 4433
+              protocol: TCP
+            - name: http-admin
+              containerPort: 4434
+              protocol: TCP
+
+          startupProbe:
+            httpGet:
+              path: /admin/health/ready
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            failureThreshold: 60
+            successThreshold: 1
+            timeoutSeconds: 2
+
+          readinessProbe:
+            httpGet:
+              path: /admin/health/alive
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+
+          livenessProbe:
+            httpGet:
+              path: /admin/health/alive
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+
+          volumeMounts:
+            # Main kratos.yaml config
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            # Google OIDC mapper jsonnet
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            # Password identity schema
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+
+      volumes:
+        - name: kratos-config-volume
+          configMap:
+            name: kratos-config
+            defaultMode: 0444
+        - name: google-mapper-volume
+          configMap:
+            name: kratos-google-mapper
+            defaultMode: 0444
+        - name: identity-schema-volume
+          configMap:
+            name: kratos-identity-schema
+            defaultMode: 0444
+
+---
+# 8. Service - Public API (port 4433)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-public
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+  ports:
+    - name: http-public
+      port: 80
+      targetPort: http-public
+      protocol: TCP
+
+---
+# 9. Service - Admin API (port 4434)
+#    Kept ClusterIP (internal only) for security — do NOT expose externally.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-admin
+  namespace: ory-sit
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+  ports:
+    - name: http-admin
+      port: 80
+      targetPort: http-admin
+      protocol: TCP

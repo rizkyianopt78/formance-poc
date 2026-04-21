@@ -1,0 +1,164 @@
+########################
+# FLOWS (Orchestration)
+########################
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flows
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flows
+  template:
+    metadata:
+      labels:
+        app: flows
+    spec:
+      initContainers:
+        - name: create-flows-db
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              PGPASSWORD=ledger psql -h postgres -U ledger -d ledger \
+                -c "SELECT 1 FROM pg_database WHERE datname='flows'" | grep -q 1 \
+                || PGPASSWORD=ledger psql -h postgres -U ledger -d ledger -c "CREATE DATABASE flows OWNER ledger;"
+              echo "Flows DB ready."
+        - name: wait-for-temporal
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z temporal 7233; do
+                echo "Waiting for Temporal..."; sleep 3;
+              done
+        - name: wait-for-ledger
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z ledger 3068; do
+                echo "Waiting for Ledger..."; sleep 2;
+              done
+      containers:
+        - name: flows
+          image: ghcr.io/formancehq/orchestration:latest
+          args:
+            - serve
+            - --worker
+          ports:
+            - containerPort: 8080
+          env:
+            # Database – dedicated 'flows' DB
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@postgres/flows?sslmode=disable"
+            # Temporal
+            - name: TEMPORAL_ADDRESS
+              value: "temporal:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "default"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "default"
+            # Auth disabled — no real OIDC provider in dev
+            - name: AUTH_ENABLED
+              value: "false"
+            # Stack URL (used to call ledger/payments APIs)
+            - name: STACK_URL
+              value: "http://gateway:8080"
+            - name: DEBUG
+              value: "false"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flows
+  namespace: formance-sit
+spec:
+  selector:
+    app: flows
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+########################
+# WALLETS
+########################
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallets
+  namespace: formance-sit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wallets
+  template:
+    metadata:
+      labels:
+        app: wallets
+    spec:
+      initContainers:
+        - name: wait-for-ledger
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z ledger 3068; do
+                echo "Waiting for Ledger..."; sleep 2;
+              done
+        - name: create-ledger
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Ensuring wallets-002 ledger exists..."
+              curl -sf -X POST http://ledger:3068/v2/wallets-002 \
+                -H "Content-Type: application/json" \
+                -d '{}' 2>&1 || true
+              echo "Ledger ready."
+      containers:
+        - name: wallets
+          image: ghcr.io/formancehq/wallets:latest
+          args:
+            - serve
+          ports:
+            - containerPort: 8080
+          env:
+            # The Ledger instance wallets uses (default: wallets-002)
+            - name: LEDGER
+              value: "wallets-002"
+            # Wallets calls {STACK_URL}/api/ledger — must point to gateway
+            # so Caddy can route /api/ledger → ledger:3068
+            - name: STACK_URL
+              value: "http://gateway:8080"
+            # Auth disabled — no real OIDC provider in dev
+            - name: AUTH_ENABLED
+              value: "false"
+            - name: DEBUG
+              value: "false"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallets
+  namespace: formance-sit
+spec:
+  selector:
+    app: wallets
+  ports:
+    - port: 8080
+      targetPort: 8080
