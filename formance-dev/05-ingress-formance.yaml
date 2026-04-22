@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: console-ingress
+  namespace: nw-dev
+spec:
+  IngressClassName: traefik
+  rules:
+    - host: formance.intra.netwallet.dev # Your external domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: console-svc # Points to the Service above
+                port:
+                  number: 80

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: console
-  namespace: formance-sit
+  namespace: nw-dev
 spec:
   replicas: 1
   selector:
@@ -53,13 +53,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: console
-  namespace: formance-sit
+  name: console-svc
+  namespace: nw-dev
 spec:
   selector:
     app: console
   type: ClusterIP
   ports:
     - name: http
-      port: 3000
+      port: 80
       targetPort: 3000
