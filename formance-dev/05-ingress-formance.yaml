@@ -4,7 +4,7 @@ metadata:
   name: console-ingress
   namespace: nw-dev
 spec:
-  IngressClassName: traefik
+  ingressClassName: traefik
   rules:
     - host: formance.intra.netwallet.dev # Your external domain
       http:
