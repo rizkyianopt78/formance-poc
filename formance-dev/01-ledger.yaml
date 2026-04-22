@@ -32,7 +32,7 @@ spec:
             - name: DEBUG
               value: "false"
             - name: POSTGRES_URI
-              value: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslDisable=true"
             - name: POSTGRES_MAX_OPEN_CONNS
               value: "40"
             - name: POSTGRES_MAX_IDLE_CONNS
@@ -229,7 +229,7 @@ spec:
             - containerPort: 8080
           env:
             - name: POSTGRES_URI
-              value: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslDisable=true"
 
 ---
 apiVersion: v1
