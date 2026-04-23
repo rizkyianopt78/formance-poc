@@ -65,6 +65,14 @@ data:
           email: claims.email,
           name: claims.name,
         },
+        verifiable_addresses: [
+          {
+            value: claims.email,
+            verified: true,
+            via: "email",
+            status: "completed",
+          },
+        ],
       },
     }
 
@@ -158,13 +166,14 @@ data:
           enabled: true
 
         oidc:
+
           enabled: true
           config:
             providers:
               - id: google
                 provider: google
-                client_id:
-                client_secret:
+                client_id:  CHANGE ME
+                client_secret: CHANG ME
                 mapper_url: file:///etc/config/google-mapper/google.mapper.jsonnet
                 scope:
                   - openid
@@ -177,6 +186,9 @@ data:
         registration:
           ui_url: http://localhost:3800/auth/signup
           after:
+            oidc:
+              hooks:
+                - hook: session
             password:
               hooks:
                 - hook: session

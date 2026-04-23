@@ -65,6 +65,15 @@ data:
           email: claims.email,
           name: claims.name,
         },
+        # Mark the Google email as verified so Kratos skips the verification flow
+        verifiable_addresses: [
+          {
+            value: claims.email,
+            verified: true,
+            via: "email",
+            status: "completed",
+          },
+        ],
       },
     }
 
@@ -163,8 +172,8 @@ data:
             providers:
               - id: google
                 provider: google
-                client_id:  [OAUTH_CLIENT_ID]
-                client_secret: [OAUTH_CLIENT_SECRET]
+                client_id: CHANGE ME
+                client_secret: CHANGE ME
                 mapper_url: file:///etc/config/google-mapper/google.mapper.jsonnet
                 scope:
                   - openid
@@ -180,8 +189,12 @@ data:
             password:
               hooks:
                 - hook: session
+            # Session hook for Google/OIDC first-time users — auto-login after registration
+            oidc:
+              hooks:
+                - hook: session
         error:
-          ui_url: https://webapp.netwallet.dev//auth/signin
+          ui_url: https://webapp.netwallet.dev/auth/signin
 
     identity:
       default_schema_id: default
