@@ -55,8 +55,6 @@ data:
             ledger /api/ledger/v2/_info /api/ledger/_healthcheck
             payments /api/payments/_info /api/payments/_healthcheck
             reconciliation /api/reconciliation/_info /api/reconciliation/_healthcheck
-            auth /api/auth/_info /api/auth/_healthcheck
-            orchestration /api/orchestration/_info /api/orchestration/_healthcheck
             wallets /api/wallets/_info /api/wallets/_healthcheck
           }
         }
@@ -106,16 +104,6 @@ spec:
       labels:
         app: gateway
     spec:
-      initContainers:
-        - name: wait-for-ledger
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z ledger 3068; do
-                echo "Waiting for ledger..."; sleep 2;
-              done
       containers:
         - name: gateway
           image: ghcr.io/formancehq/gateway:v2.0.31

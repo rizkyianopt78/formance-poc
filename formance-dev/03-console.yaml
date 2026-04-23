@@ -13,16 +13,6 @@ spec:
       labels:
         app: console
     spec:
-      initContainers:
-        - name: wait-for-gateway
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z gateway 8080; do
-                echo "Waiting for gateway..."; sleep 2;
-              done
       containers:
         - name: console
           image: ghcr.io/formancehq/console-v3:v2.2.1
@@ -34,11 +24,14 @@ spec:
             - name: MICRO_STACK
               value: "1"
             - name: API_STACK_URL
-              value: "http://gateway:8080/api"
+              # Use internal service URL for SSR — pods cannot reach the cluster's
+              # own external ingress (hairpin NAT). The browser proxies all API calls
+              # through the Remix SSR loaders so it never uses this URL directly.
+              value: "http://gateway-svc/api"
             - name: COOKIE_SECRET
               value: "secret"
             - name: COOKIE_DOMAIN
-              value: "localhost"
+              value: "formance.intra.netwallet.dev"
             # Expose flows/orchestration module in the console
             - name: FEATURE_ORCHESTRATION
               value: "true"

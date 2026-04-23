@@ -13,16 +13,6 @@ spec:
       labels:
         app: ledger
     spec:
-      initContainers:
-        - name: wait-for-postgres
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z postgres 5432; do
-                echo "Waiting for postgres..."; sleep 2;
-              done
       containers:
         - name: ledger
           image: ghcr.io/formancehq/ledger:v2.4.3
@@ -32,7 +22,7 @@ spec:
             - name: DEBUG
               value: "false"
             - name: POSTGRES_URI
-              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslDisable=true"
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
             - name: POSTGRES_MAX_OPEN_CONNS
               value: "40"
             - name: POSTGRES_MAX_IDLE_CONNS
@@ -97,17 +87,8 @@ spec:
             - -c
             - |
               echo "Creating payments schema if not exists..."
-              PGPASSWORD=ledger psql -h postgres -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS payments;"
+              PGPASSWORD=ledger psql -h nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS payments;"
               echo "Schema ready."
-        - name: wait-for-temporal
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z temporal 7233; do
-                echo "Waiting for Temporal..."; sleep 3;
-              done
       containers:
         - name: payments
           image: ghcr.io/formancehq/payments:latest
@@ -120,13 +101,13 @@ spec:
             - name: CONFIG_ENCRYPTION_KEY
               value: "my-secret-key-123"
             - name: POSTGRES_URI
-              value: "postgresql://ledger:ledger@postgres/payments?sslmode=disable"
+              value: "postgresql://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/payments?sslmode=disable"
             - name: STORAGE_POSTGRES_URI
-              value: "postgresql://ledger:ledger@postgres/payments?sslmode=disable"
+              value: "postgresql://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/payments?sslmode=disable"
             - name: TEMPORAL_ADDRESS
               value: "temporal:7233"
             - name: STACK_PUBLIC_URL
-              value: "http://gateway:8080"
+              value: "http://gateway-svc"
           volumeMounts:
             # DUMMYPAY connector requires a real directory path on the pod filesystem
             - name: dummypay-data
@@ -167,16 +148,6 @@ spec:
       labels:
         app: reconciliation
     spec:
-      initContainers:
-        - name: create-reconciliation-schema
-          image: postgres:16-alpine
-          command:
-            - sh
-            - -c
-            - |
-              echo "Creating reconciliations schema if not exists..."
-              PGPASSWORD=ledger psql -h postgres -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS reconciliations;"
-              echo "Schema ready."
       containers:
         - name: reconciliation
           image: ghcr.io/formancehq/reconciliation:latest
@@ -187,7 +158,7 @@ spec:
             - containerPort: 8080
           env:
             - name: POSTGRES_URI
-              value: postgres://ledger:ledger@postgres:5432/ledger?sslmode=disable&search_path=reconciliations
+              value: postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable&search_path=reconciliations
 ---
 apiVersion: v1
 kind: Service
@@ -200,50 +171,6 @@ spec:
   ports:
     - port: 8080
       targetPort: 8080
-
-# Exchange service removed — ghcr.io/formancehq/exchange:latest image does not exist on GHCR
-
----
-########################
-# AUTH
-########################
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: auth
-  namespace: nw-dev
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: auth
-  template:
-    metadata:
-      labels:
-        app: auth
-    spec:
-      containers:
-        - name: auth
-          image: ghcr.io/formancehq/auth:latest
-          ports:
-            - containerPort: 8080
-          env:
-            - name: POSTGRES_URI
-              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslDisable=true"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: auth
-  namespace: nw-dev
-spec:
-  selector:
-    app: auth
-  ports:
-    - port: 8080
-      targetPort: 8080
-
 
 ---
 ########################
@@ -264,16 +191,6 @@ spec:
       labels:
         app: temporal
     spec:
-      initContainers:
-        - name: wait-for-postgres
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z postgres 5432; do
-                echo "Waiting for Postgres..."; sleep 2;
-              done
       containers:
         - name: temporal
           image: temporalio/auto-setup:1.22.3
@@ -289,11 +206,13 @@ spec:
               value: "ledger"
             - name: POSTGRES_PWD
               value: "ledger"
-            # POSTGRES_SEEDS must be the host of postgres service (not 'temporal')
+            # POSTGRES_SEEDS uses IP because cluster DNS can't resolve external RDS hostname
+            # nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com resolves to 10.1.3.125
             - name: POSTGRES_SEEDS
-              value: "postgres"
+              value: "10.1.3.125"
             - name: ENABLE_ES
               value: "false"
+
             # Skip missing dynamic config file
             - name: DYNAMIC_CONFIG_FILE_PATH
               value: "/etc/temporal/config/dynamicconfig.yaml"

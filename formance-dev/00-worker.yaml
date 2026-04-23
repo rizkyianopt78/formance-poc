@@ -13,24 +13,14 @@ spec:
       labels:
         app: worker
     spec:
-      initContainers:
-        - name: wait-for-postgres
-          image: busybox:1.35
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z postgres 5432; do
-                echo "Waiting for postgres..."; sleep 2;
-              done
       containers:
         - name: worker
-          image: ghcr.io/formancehq/ledger:v2.4.0
+          image: ghcr.io/formancehq/ledger:v2.4.3
           env:
             - name: DEBUG
               value: "false"
             - name: POSTGRES_URI
-              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslDisable=true"
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
             - name: POSTGRES_MAX_OPEN_CONNS
               value: "40"
             - name: POSTGRES_MAX_IDLE_CONNS
