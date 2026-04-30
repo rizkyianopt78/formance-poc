@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: gateway-ingress
   namespace: nw-dev
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: nw-dev-auth-middleware@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
