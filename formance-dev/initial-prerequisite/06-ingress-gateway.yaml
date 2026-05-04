@@ -1,20 +1,20 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: console-ingress
+  name: gateway-ingress
   namespace: nw-dev
   annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: nw-dev-ledger-middleware@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: nw-dev-auth-middleware@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
-    - host: formance.intra.netwallet.dev # Your external domain
+    - host: formanceapi.intra.netwallet.dev # Your external domain
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: console-svc # Points to the Service above
+                name: gateway-svc # Points to the Service above
                 port:
                   number: 80

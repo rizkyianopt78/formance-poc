@@ -1,0 +1,61 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallets
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wallets
+  template:
+    metadata:
+      labels:
+        app: wallets
+    spec:
+      initContainers:
+        - name: create-ledger
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Ensuring nw_wallets_dev ledger exists..."
+              curl -sf -X POST http://ledger:3068/v2/nw_wallets_dev \
+                -H "Content-Type: application/json" \
+                -d '{}' 2>&1 || true
+              echo "Ledger ready."
+      containers:
+        - name: wallets
+          image: ghcr.io/formancehq/wallets:latest
+          args:
+            - serve
+          ports:
+            - containerPort: 8080
+          env:
+            # The Ledger instance wallets uses (default: wallets-002)
+            - name: LEDGER
+              value: "nw_wallets_dev"
+            # Wallets calls {STACK_URL}/api/ledger — must point to gateway
+            # so Caddy can route /api/ledger → ledger:3068
+            - name: STACK_URL
+              value: "http://gateway-svc"
+            # Auth disabled — no real OIDC provider in dev
+            - name: AUTH_ENABLED
+              value: "false"
+            - name: DEBUG
+              value: "false"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallets
+  namespace: nw-dev
+spec:
+  selector:
+    app: wallets
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/formancehq/ledger:v2.4.3
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: "5m"
