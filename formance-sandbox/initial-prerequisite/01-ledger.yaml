@@ -1,0 +1,251 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      containers:
+        - name: ledger
+          image: ghcr.io/formancehq/ledger:v2.4.3
+          ports:
+            - containerPort: 3068
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "40"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "40"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: "5m"
+            - name: EXPERIMENTAL_FEATURES
+              value: "true"
+            - name: AUTO_UPGRADE
+              value: "true"
+            - name: BULK_PARALLEL
+              value: "10"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER
+              value: "true"
+            - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER_FLAGS
+              value: "experimental-overdraft-function experimental-get-asset-function experimental-get-amount-function experimental-oneof experimental-account-interpolation experimental-mid-script-function-call experimental-asset-colors"
+            # Enable pipelines/exporters API endpoints
+            - name: EXPERIMENTAL_EXPORTERS
+              value: "true"
+            # Run the replication worker embedded (required for pipelines)
+            - name: WORKER
+              value: "true"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger
+  namespace: nw-dev
+spec:
+  selector:
+    app: ledger
+  ports:
+    - name: http
+      port: 3068
+      targetPort: 3068
+
+---
+########################
+# PAYMENTS
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+    spec:
+      initContainers:
+        - name: create-payments-schema
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "Creating payments schema if not exists..."
+              PGPASSWORD=ledger psql -h nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com -U ledger -d ledger -c "CREATE SCHEMA IF NOT EXISTS payments;"
+              echo "Schema ready."
+      containers:
+        - name: payments
+          # Latest stable: https://github.com/formancehq/payments/releases/tag/v3.2.0
+          image: ghcr.io/formancehq/payments:v3.2.0
+          args:
+            - serve
+            - --auto-migrate
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CONFIG_ENCRYPTION_KEY
+              value: "my-secret-key-123"
+            - name: POSTGRES_URI
+              value: "postgresql://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/payments?sslmode=disable"
+            - name: STORAGE_POSTGRES_URI
+              value: "postgresql://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/payments?sslmode=disable"
+            - name: TEMPORAL_ADDRESS
+              value: "temporal:7233"
+            - name: STACK_PUBLIC_URL
+              value: "http://gateway-svc"
+          volumeMounts:
+            # DUMMYPAY connector requires a real directory path on the pod filesystem
+            - name: dummypay-data
+              mountPath: /data/dummypay
+      volumes:
+        - name: dummypay-data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments
+  namespace: nw-dev
+spec:
+  selector:
+    app: payments
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+########################
+# RECONCILIATION
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reconciliation
+  template:
+    metadata:
+      labels:
+        app: reconciliation
+    spec:
+      containers:
+        - name: reconciliation
+          # Latest stable: https://github.com/formancehq/reconciliation/releases/tag/v2.2.2
+          image: ghcr.io/formancehq/reconciliation:v2.2.2
+          args:
+            - serve
+            - --auto-migrate
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_URI
+              value: postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable&search_path=reconciliations
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reconciliation
+  namespace: nw-dev
+spec:
+  selector:
+    app: reconciliation
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+########################
+# TEMPORAL
+########################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal
+  template:
+    metadata:
+      labels:
+        app: temporal
+    spec:
+      containers:
+        - name: temporal
+          image: temporalio/auto-setup:1.22.3
+          ports:
+            - containerPort: 7233
+          env:
+            # DB type must be 'postgresql' (not 'temporal')
+            - name: DB
+              value: "postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "ledger"
+            - name: POSTGRES_PWD
+              value: "ledger"
+            # POSTGRES_SEEDS uses IP because cluster DNS can't resolve external RDS hostname
+            # nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com resolves to 10.1.3.125
+            - name: POSTGRES_SEEDS
+              value: "10.1.3.125"
+            - name: ENABLE_ES
+              value: "false"
+
+            # Skip missing dynamic config file
+            - name: DYNAMIC_CONFIG_FILE_PATH
+              value: "/etc/temporal/config/dynamicconfig.yaml"
+          volumeMounts:
+            - name: dynamic-config
+              mountPath: /etc/temporal/config/dynamicconfig.yaml
+              subPath: dynamicconfig.yaml
+      volumes:
+        - name: dynamic-config
+          configMap:
+            name: temporal-dynamic-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-dynamic-config
+  namespace: nw-dev
+data:
+  dynamicconfig.yaml: |
+    # empty dynamic config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal
+  namespace: nw-dev
+spec:
+  selector:
+    app: temporal
+  ports:
+    - port: 7233
+      targetPort: 7233

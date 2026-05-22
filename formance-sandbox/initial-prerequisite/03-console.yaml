@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: console
+  template:
+    metadata:
+      labels:
+        app: console
+    spec:
+      containers:
+        - name: console
+          image: ghcr.io/formancehq/console-v3:v2.2.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: MICRO_STACK
+              value: "1"
+            - name: API_STACK_URL
+              # Use internal service URL for SSR — pods cannot reach the cluster's
+              # own external ingress (hairpin NAT). The browser proxies all API calls
+              # through the Remix SSR loaders so it never uses this URL directly.
+              value: "http://gateway-svc/api"
+            - name: COOKIE_SECRET
+              value: "secret"
+            - name: COOKIE_DOMAIN
+              value: "formance.intra.netwallet.dev"
+            # Expose flows/orchestration module in the console
+            - name: FEATURE_ORCHESTRATION
+              value: "true"
+            - name: FEATURE_WALLETS
+              value: "true"
+            - name: FEATURE_PAYMENTS
+              value: "true"
+            - name: FEATURE_RECONCILIATION
+              value: "true"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: console-svc
+  namespace: nw-dev
+spec:
+  selector:
+    app: console
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

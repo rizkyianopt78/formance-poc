@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-courier
+  namespace: nw-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos-courier
+  template:
+    metadata:
+      labels:
+        app: kratos-courier
+    spec:
+      containers:
+        - name: kratos-courier
+          image: oryd/kratos:v1.1.0
+
+          command:
+            - kratos
+            - courier
+            - watch
+            - --config
+            - /etc/config/kratos/kratos.yaml
+
+          volumeMounts:
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+            - name: email-templates-volume
+              mountPath: /etc/config/kratos-templates
+              readOnly: true
+
+          env:
+            - name: DSN
+              value: "postgres://ory:ory@nw-dbapp-sandbox.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com:5432/kratos?sslmode=disable"
+            - name: SECRETS_DEFAULT
+              value: "supersecretkey12345super"
+            - name: SECRETS_COOKIE
+              value: "anotherverysecretkey12345"
+            - name: COURIER_SMTP_CONNECTION_URI
+              value: "smtp://netwallet%40sandbox3c580440a5544458b38eac8e2528e672.mailgun.org:WfExHfQfjZmWHj3t1p8G@smtp.mailgun.org:587"
+
+      volumes:
+        - name: kratos-config-volume
+          configMap:
+            name: kratos-config
+            defaultMode: 0444
+        - name: google-mapper-volume
+          configMap:
+            name: kratos-google-mapper
+            defaultMode: 0444
+        - name: identity-schema-volume
+          configMap:
+            name: kratos-identity-schema
+            defaultMode: 0444
+        - name: email-templates-volume
+          configMap:
+            name: kratos-email-templates
+            defaultMode: 0444

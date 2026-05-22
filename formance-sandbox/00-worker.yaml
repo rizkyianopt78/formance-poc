@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: formance-worker
+  namespace: nw-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: formance-worker
+  template:
+    metadata:
+      labels:
+        app: formance-worker
+    spec:
+      containers:
+        - name: formance-worker
+          image: ghcr.io/formancehq/ledger:v2.4.3
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: POSTGRES_URI
+              value: "postgres://nwpostgres:Passw0rd!23098@nw-sandbox-rds.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
+            - name: POSTGRES_MAX_OPEN_CONNS
+              value: "5"
+            - name: POSTGRES_MAX_IDLE_CONNS
+              value: "5"
+            - name: POSTGRES_CONN_MAX_IDLE_TIME
+              value: "5m"

@@ -1,0 +1,72 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: formance-wallets
+  namespace: nw-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: formance-wallets
+  template:
+    metadata:
+      labels:
+        app: formance-wallets
+    spec:
+      initContainers:
+        - name: create-ledger
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Ensuring nw_wallets_dev ledger exists..."
+              curl -sf -X POST http://formance-ledger:3068/v2/nw_wallets_sandbox \
+                -H "Content-Type: application/json" \
+                -d '{}' 2>&1 || true
+              echo "Ledger ready."
+      containers:
+        - name: formance-wallets
+          image: ghcr.io/formancehq/wallets:v2.1.5
+          args:
+            - serve
+          ports:
+            - containerPort: 8080
+          env:
+            # The Ledger instance wallets uses (default: wallets-002)
+            - name: LEDGER
+              value: "nw_wallets_sandbox"
+            # Wallets calls {STACK_URL}/api/ledger — must point to gateway
+            # so Caddy can route /api/ledger → ledger:3068
+            - name: STACK_URL
+              value: "http://formance-gateway-svc"
+            # Auth disabled — no real OIDC provider in sandbox
+            - name: AUTH_ENABLED
+              value: "false"
+            - name: DEBUG
+              value: "true"
+            # Go equivalent of curl -k: trust the Traefik self-signed cert
+            - name: SSL_CERT_FILE
+              value: "/etc/ssl/gateway/ca.crt"
+          volumeMounts:
+            - name: gateway-ca
+              mountPath: /etc/ssl/gateway
+              readOnly: true
+      volumes:
+        - name: gateway-ca
+          configMap:
+            name: gateway-ca-cert
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: formance-wallets
+  namespace: nw-sandbox
+spec:
+  selector:
+    app: formance-wallets
+  ports:
+    - port: 8080
+      targetPort: 8080

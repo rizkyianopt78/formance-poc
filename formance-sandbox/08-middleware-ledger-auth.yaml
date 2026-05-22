@@ -1,0 +1,8 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: auth-middleware
+  namespace: nw-sandbox
+spec:
+  basicAuth:
+    secret: basic-auth-secret

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: formance-console
+  namespace: nw-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: formance-console
+  template:
+    metadata:
+      labels:
+        app: formance-console
+    spec:
+      containers:
+        - name: console
+          image: ghcr.io/formancehq/console-v3:v2.2.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: MICRO_STACK
+              value: "1"
+            - name: API_STACK_URL
+              # Use internal service URL for SSR — pods cannot reach the cluster's
+              # own external ingress (hairpin NAT). The browser proxies all API calls
+              # through the Remix SSR loaders so it never uses this URL directly.
+              value: "http://formance-gateway-svc/api"
+            - name: COOKIE_SECRET
+              value: "secret"
+            - name: COOKIE_DOMAIN
+              value: "formance.intra.thenetwallet.co"
+            # Expose flows/orchestration module in the console
+            - name: FEATURE_ORCHESTRATION
+              value: "true"
+            - name: FEATURE_WALLETS
+              value: "true"
+            - name: FEATURE_PAYMENTS
+              value: "false"
+            - name: FEATURE_RECONCILIATION
+              value: "false"
+            # Node.js TLS skip — equivalent of curl -k
+            # Needed if console makes any HTTPS calls to self-signed endpoints
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: formance-console-svc
+  namespace: nw-sandbox
+spec:
+  selector:
+    app: formance-console
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

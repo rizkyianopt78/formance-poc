@@ -1,0 +1,586 @@
+# =============================================================================
+# Kratos - Complete Kubernetes Manifests
+# Includes: Namespace, ServiceAccount, Secret, ConfigMaps, Deployment, Services
+# =============================================================================
+
+---
+# 1. Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+
+---
+# 2. ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kratos
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+automountServiceAccountToken: false
+
+---
+# 4. ConfigMap - Google OIDC mapper (plain Jsonnet, NOT base64)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-google-mapper
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  google.mapper.jsonnet: |
+    local claims = {
+      email_verified: false,
+    } + std.extVar('claims');
+
+    {
+      identity: {
+        traits: {
+          email: claims.email,
+          name: claims.name,
+          picture: claims.picture
+        },
+        # Mark the Google email as verified so Kratos skips the verification flow
+        verifiable_addresses: [
+          {
+            value: claims.email,
+            verified: true,
+            via: "email",
+            status: "completed",
+          },
+        ],
+      },
+    }
+
+---
+# 5. ConfigMap - Identity schema (plain JSON, NOT base64)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-identity-schema
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  password.schema.json: |
+    {
+      "$id": "https://schemas.example.com/identity.schema.json",
+      "type": "object",
+      "properties": {
+        "traits": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "ory.sh/kratos": {
+                "credentials": {
+                  "password": {
+                    "identifier": true
+                  }
+                },
+                "verification": {
+                  "via": "email"
+                },
+                "recovery": {
+                  "via": "email"
+                }
+              }
+            },
+            "name": {
+              "type": "string",
+              "minLength": 2
+            }
+          },
+          "required": ["email", "name"]
+        }
+      },
+      "required": ["traits"]
+    }
+
+---
+# 6. ConfigMap - Email templates
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-email-templates
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  recovery-valid-subject.gotmpl: |
+    Reset your NetWallet password
+  recovery-valid-body.gotmpl: |
+    Hi {{ .Identity.traits.email }},
+
+    We received a request to reset the password for your NetWallet account.
+
+    Reset your password using the link below:
+    {{ .RecoveryURL }}
+
+    This link will expire in 24 hours.
+
+    If you did not request a password reset, you can safely ignore this email.
+
+    © 2026 NetWallet. All rights reserved.
+  recovery-valid-body-html.gotmpl: |
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Reset Your Password</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #333;
+          }
+          .wrapper { max-width: 560px; margin: 40px auto; padding: 0 16px; }
+          .card { background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #1a56db 0%, #1e40af 100%); padding: 32px 40px; text-align: center; }
+          .header .logo-text { font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px; }
+          .header .logo-dot { color: #93c5fd; }
+          .body { padding: 40px; }
+          .body h1 { font-size: 22px; font-weight: 600; color: #111; margin-bottom: 12px; }
+          .body p { color: #555; margin-bottom: 12px; }
+          .btn-wrap { text-align: center; margin: 32px 0; }
+          .btn { display: inline-block; background: linear-gradient(135deg, #1a56db 0%, #1e40af 100%); color: #ffffff !important; text-decoration: none; font-size: 15px; font-weight: 600; padding: 14px 36px; border-radius: 8px; letter-spacing: 0.2px; }
+          .fallback { background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin-top: 8px; word-break: break-all; font-size: 13px; color: #64748b; }
+          .notice { background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 0 6px 6px 0; padding: 12px 16px; margin-top: 24px; font-size: 13px; color: #78350f; }
+          .footer { padding: 24px 40px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8; }
+          .footer a { color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="card">
+            <div class="header">
+              <div class="logo-text">Net<span class="logo-dot">Wallet</span></div>
+            </div>
+            <div class="body">
+              <h1>Reset Your Password</h1>
+              <p>Hi <strong>{{ .Identity.traits.email }}</strong>,</p>
+              <p>We received a request to reset the password for your account. Click the button below to choose a new password.</p>
+              <div class="btn-wrap">
+                <a href="{{ .RecoveryURL }}" class="btn">Reset Password</a>
+              </div>
+              <p style="font-size:13px; color:#777;">If the button above doesn't work, copy and paste this link into your browser:</p>
+              <div class="fallback">{{ .RecoveryURL }}</div>
+              <div class="notice">
+                ⚠️ This link will expire in <strong>24 hours</strong>.
+                If you did not request a password reset, you can safely ignore this email.
+              </div>
+            </div>
+            <div class="footer">
+              <p>© 2026 NetWallet. All rights reserved.</p>
+              <p style="margin-top:4px;">This is an automated message, please do not reply directly to this email.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+
+---
+# 7. ConfigMap - Main Kratos configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-config
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+data:
+  kratos.yaml: |
+    version: v0.13.0
+
+    dsn: $(DSN)
+
+    secrets:
+      default:
+        - $(SECRETS_DEFAULT)
+      cookie:
+        - $(SECRETS_COOKIE)
+    # NOTE: omit secrets.cipher entirely when not in use;
+    # setting it to an empty value causes a validation error
+
+    session:
+      cookie:
+        domain: localhost
+        path: /
+        same_site: Lax
+
+    oauth2_provider:
+      url: http://hydra-admin:4445
+
+    selfservice:
+      default_browser_return_url: https://webapp.thenetwallet.co
+      allowed_return_urls:
+        - https://webapp.thenetwallet.co
+        - https://local.thenetwallet.co:3800
+        - https://local.thenetwallet.co:3860
+        - https://local.thenetwallet.co:3100
+        - https://local.thenetwallet.co:3200
+        - https://webapi.thenetwallet.co
+        - https://kratosadmin.intra.thenetwallet.co
+        - https://auth.thenetwallet.co
+
+      methods:
+        link:
+          enabled: true
+        password:
+          enabled: true
+
+        oidc:
+          enabled: true
+          config:
+            providers:
+              - id: google
+                provider: google
+                client_id: CHANGE ME
+                client_secret: CHANGE ME
+                mapper_url: file:///etc/config/google-mapper/google.mapper.jsonnet
+                scope:
+                  - openid
+                  - email
+                  - profile
+
+      flows:
+        settings:
+          ui_url: https://webapp.thenetwallet.co/auth/reset-password
+          privileged_session_max_age: 24h
+        login:
+          ui_url: https://webapp.thenetwallet.co/auth/signin
+          lifespan: 24h
+        recovery:
+          enabled: true
+          ui_url: https://webapp.thenetwallet.co/auth/reset-password
+        registration:
+          ui_url: https://webapp.thenetwallet.co/auth/signup
+          after:
+            password:
+              hooks:
+                - hook: session
+            # Session hook for Google/OIDC first-time users — auto-login after registration
+            oidc:
+              hooks:
+                - hook: session
+        error:
+          ui_url: https://webapp.thenetwallet.co/auth/signin
+
+    identity:
+      default_schema_id: default
+      schemas:
+        - id: default
+          url: file:///etc/config/identity-schema/password.schema.json
+
+    courier:
+      delivery_strategy: smtp
+      smtp:
+        connection_uri: $(COURIER_SMTP_CONNECTION_URI)
+      templates:
+        recovery:
+          valid:
+            email:
+              subject: file:///etc/config/kratos-templates/recovery-valid-subject.gotmpl
+              body:
+                plaintext: file:///etc/config/kratos-templates/recovery-valid-body.gotmpl
+                html: file:///etc/config/kratos-templates/recovery-valid-body-html.gotmpl
+
+    serve:
+      public:
+        base_url: https://auth.netwallet.sandbox
+        port: 4433
+        cors:
+          enabled: true
+          allowed_origins:
+            - https://webapp.thenetwallet.co
+            - https://webapi.thenetwallet.co
+            - https://kratosadmin.intra.thenetwallet.co
+          allowed_methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+          allowed_headers:
+            - Authorization
+            - Cookie
+            - Content-Type
+          exposed_headers:
+            - Content-Type
+            - Set-Cookie
+            - Location
+          allow_credentials: true
+
+      admin:
+        base_url: https://kratosadmin.intra.thenetwallet.co
+        port: 4434
+
+---
+# 7. Deployment - Kratos
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+    app.kubernetes.io/version: v26.2.0
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 3600
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kratos
+      app.kubernetes.io/instance: kratos
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kratos
+        app.kubernetes.io/instance: kratos
+        app.kubernetes.io/version: v26.2.0
+    spec:
+      serviceAccountName: kratos
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Auto-migration init container runs "kratos migrate sql" before the main
+      # container starts. This replaces the Helm pre-install Job hook.
+      initContainers:
+        - name: kratos-automigrate
+          image: docker.io/oryd/kratos:v26.2.0
+          imagePullPolicy: IfNotPresent
+          command: ["kratos"]
+          args:
+            - migrate
+            - sql
+            - up
+            - --read-from-env
+            - --yes
+            - --config
+            - /etc/config/kratos/kratos.yaml
+          env:
+            - name: DSN
+              value: "postgres://ory:ory@nw-dbapp-sandbox.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com:5432/kratos?sslmode=disable"
+            - name: SECRETS_DEFAULT
+              value: "supersecretkey12345super"
+            - name: SECRETS_COOKIE
+              value: "anotherverysecretkey12345"
+            - name: COURIER_SMTP_CONNECTION_URI
+              value: "smtp://netwallet%40sandbox3c580440a5544458b38eac8e2528e672.mailgun.org:WfExHfQfjZmWHj3t1p8G@smtp.mailgun.org:587"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+            - name: email-templates-volume
+              mountPath: /etc/config/kratos-templates
+              readOnly: true
+
+      containers:
+        - name: kratos
+          image: docker.io/oryd/kratos:v26.2.0
+          imagePullPolicy: IfNotPresent
+          command: ["kratos"]
+          args:
+            - serve
+            - all
+            - --config
+            - /etc/config/kratos/kratos.yaml
+
+          env:
+            - name: DSN
+              value: "postgres://ory:ory@nw-dbapp-sandbox.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com:5432/kratos?sslmode=disable"
+            - name: SECRETS_DEFAULT
+              value: "supersecretkey12345super"
+            - name: SECRETS_COOKIE
+              value: "anotherverysecretkey12345"
+            - name: COURIER_SMTP_CONNECTION_URI
+              value: "smtp://netwallet%40sandbox3c580440a5544458b38eac8e2528e672.mailgun.org:WfExHfQfjZmWHj3t1p8G@smtp.mailgun.org:587"
+
+          ports:
+            - name: http-public
+              containerPort: 4433
+              protocol: TCP
+            - name: http-admin
+              containerPort: 4434
+              protocol: TCP
+
+          startupProbe:
+            httpGet:
+              path: /admin/health/ready
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            failureThreshold: 60
+            successThreshold: 1
+            timeoutSeconds: 2
+
+          readinessProbe:
+            httpGet:
+              path: /admin/health/alive
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+
+          livenessProbe:
+            httpGet:
+              path: /admin/health/alive
+              port: 4434
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+
+          volumeMounts:
+            # Main kratos.yaml config
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            # Google OIDC mapper jsonnet
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            # Password identity schema
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+            - name: email-templates-volume
+              mountPath: /etc/config/kratos-templates
+              readOnly: true
+
+      volumes:
+        - name: kratos-config-volume
+          configMap:
+            name: kratos-config
+            defaultMode: 0444
+        - name: google-mapper-volume
+          configMap:
+            name: kratos-google-mapper
+            defaultMode: 0444
+        - name: identity-schema-volume
+          configMap:
+            name: kratos-identity-schema
+            defaultMode: 0444
+        - name: email-templates-volume
+          configMap:
+            name: kratos-email-templates
+            defaultMode: 0444
+
+---
+# 8. Service - Public API (port 4433)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-public
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+  ports:
+    - name: http-public
+      port: 80
+      targetPort: http-public
+      protocol: TCP
+
+---
+# 9. Service - Admin API (port 4434)
+#    Kept ClusterIP (internal only) for security — do NOT expose externally.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-admin
+  namespace: nw-sandbox
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/instance: kratos
+  ports:
+    - name: http-admin
+      port: 80
+      targetPort: http-admin
+      protocol: TCP

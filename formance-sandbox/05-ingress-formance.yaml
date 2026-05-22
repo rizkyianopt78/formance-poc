@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: formance-console-ingress
+  namespace: nw-sandbox
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: nw-sandbox-ledger-middleware@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: formance.intra.thenetwallet.co # Your external domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: formance-console-svc # Points to the Service above
+                port:
+                  number: 80
