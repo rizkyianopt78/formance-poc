@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ledger
+  name: formance-ledger
   namespace: nw-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ledger
+      app: formance-ledger
   template:
     metadata:
       labels:
-        app: ledger
+        app: formance-ledger
     spec:
       containers:
-        - name: ledger
+        - name: formance-ledger
           image: ghcr.io/formancehq/ledger:v2.4.3
           ports:
             - containerPort: 3068
@@ -24,9 +24,9 @@ spec:
             - name: POSTGRES_URI
               value: "postgres://ledger:ledger@nw-dbapp-dev.cj2ayui6qtj7.ap-south-1.rds.amazonaws.com/ledger?sslmode=disable"
             - name: POSTGRES_MAX_OPEN_CONNS
-              value: "40"
+              value: "4"
             - name: POSTGRES_MAX_IDLE_CONNS
-              value: "40"
+              value: "4"
             - name: POSTGRES_CONN_MAX_IDLE_TIME
               value: "5m"
             - name: EXPERIMENTAL_FEATURES
@@ -36,12 +36,12 @@ spec:
             - name: BULK_PARALLEL
               value: "10"
             - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER
-              value: "true"
+              value: "false"
             - name: EXPERIMENTAL_NUMSCRIPT_INTERPRETER_FLAGS
               value: "experimental-overdraft-function experimental-get-asset-function experimental-get-amount-function experimental-oneof experimental-account-interpolation experimental-mid-script-function-call experimental-asset-colors"
             # Enable pipelines/exporters API endpoints
             - name: EXPERIMENTAL_EXPORTERS
-              value: "true"
+              value: "false"
             # Run the replication worker embedded (required for pipelines)
             - name: WORKER
               value: "true"
@@ -50,11 +50,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ledger
+  name: formance-ledger
   namespace: nw-dev
 spec:
   selector:
-    app: ledger
+    app: formance-ledger
   ports:
     - name: http
       port: 3068
@@ -67,7 +67,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: payments
+  name: formance-payments
   namespace: nw-dev
 spec:
   replicas: 1
@@ -91,7 +91,8 @@ spec:
               echo "Schema ready."
       containers:
         - name: payments
-          image: ghcr.io/formancehq/payments:latest
+          # Latest stable: https://github.com/formancehq/payments/releases/tag/v3.2.0
+          image: ghcr.io/formancehq/payments:v3.2.0
           args:
             - serve
             - --auto-migrate
@@ -120,11 +121,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: payments
+  name: formance-payments
   namespace: nw-dev
 spec:
   selector:
-    app: payments
+    app: formance-payments
   ports:
     - port: 8080
       targetPort: 8080
@@ -136,21 +137,26 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: reconciliation
+  name: formance-reconciliation
   namespace: nw-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: reconciliation
+      app: formance-reconciliation
   template:
     metadata:
       labels:
-        app: reconciliation
+        app: formance-reconciliation
     spec:
       containers:
+<<<<<<< HEAD
         - name: reconciliation
           image: ghcr.io/formancehq/reconciliation:latest
+=======
+        - name: formance-reconciliation
+          image: ghcr.io/formancehq/reconciliation:v0.4.0
+>>>>>>> c5d4900 (refactor: prefix Formance resources with service names, update image versions, and configure Kratos recovery email templates)
           args:
             - serve
             - --auto-migrate
@@ -163,11 +169,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: reconciliation
+  name: formance-reconciliation
   namespace: nw-dev
 spec:
   selector:
-    app: reconciliation
+    app: formance-reconciliation
   ports:
     - port: 8080
       targetPort: 8080
@@ -179,20 +185,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: temporal
+  name: formance-temporal
   namespace: nw-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: temporal
+      app: formance-temporal
   template:
     metadata:
       labels:
-        app: temporal
+        app: formance-temporal
     spec:
       containers:
-        - name: temporal
+        - name: formance-temporal
           image: temporalio/auto-setup:1.22.3
           ports:
             - containerPort: 7233
@@ -239,11 +245,11 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: temporal
+  name: formance-temporal
   namespace: nw-dev
 spec:
   selector:
-    app: temporal
+    app: formance-temporal
   ports:
     - port: 7233
       targetPort: 7233

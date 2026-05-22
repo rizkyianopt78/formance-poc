@@ -32,34 +32,34 @@ data:
     }
 
     :8080 {
-      import handle_path_route_without_auth "/api/ledger" "ledger:3068"
-      import handle_path_route_without_auth "/api/payments" "payments:8080"
-      import handle_path_route_without_auth "/api/reconciliation" "reconciliation:8080"
+      import handle_path_route_without_auth "/api/ledger" "formance-ledger:3068"
+      import handle_path_route_without_auth "/api/payments" "formance-payments:8080"
+      import handle_path_route_without_auth "/api/reconciliation" "formance-reconciliation:8080"
 
       # auth
-      import handle_path_route_without_auth "/api/auth" "auth:8080"
+      import handle_path_route_without_auth "/api/auth" "formance-auth:8080"
 
-      # flows: accessible as /api/orchestration (per Formance docs) AND /api/flows
-      import handle_path_route_without_auth "/api/orchestration" "flows:8080"
-      import handle_path_route_without_auth "/api/flows" "flows:8080"
+      # flows/orchestration
+      import handle_path_route_without_auth "/api/orchestration" "formance-flows:8080"
+      import handle_path_route_without_auth "/api/flows" "formance-flows:8080"
 
       # wallets
-      import handle_path_route_without_auth "/api/wallets" "wallets:8080"
+      import handle_path_route_without_auth "/api/wallets" "formance-wallets:8080"
 
       handle /versions {
         versions {
           region "local"
           env "local"
           endpoints {
-            # ledger: _info is at /v2/_info, healthcheck is at /_healthcheck (root)
-            ledger /api/ledger/v2/_info /api/ledger/_healthcheck
-            payments /api/payments/_info /api/payments/_healthcheck
-            reconciliation /api/reconciliation/_info /api/reconciliation/_healthcheck
-            wallets /api/wallets/_info /api/wallets/_healthcheck
+            ledger http://formance-ledger.nw-dev.svc.cluster.local:3068/v2/_info http://formance-ledger.nw-dev.svc.cluster.local:3068/_healthcheck
+            # payments http://formance-payments.nw-dev.svc.cluster.local:8080/_info http://formance-payments.nw-dev.svc.cluster.local:8080/_healthcheck
+            # reconciliation http://formance-reconciliation.nw-dev.svc.cluster.local:8080/_info http://formance-reconciliation.nw-dev.svc.cluster.local:8080/_healthcheck
+            wallets http://formance-wallets.nw-dev.svc.cluster.local:8080/_info http://formance-wallets.nw-dev.svc.cluster.local:8080/_healthcheck
+            # auth http://formance-auth.nw-dev.svc.cluster.local:8080/_info http://formance-auth.nw-dev.svc.cluster.local:8080/_healthcheck
+            # orchestration http://formance-flows.nw-dev.svc.cluster.local:8080/_info http://formance-flows.nw-dev.svc.cluster.local:8080/_healthcheck
           }
         }
       }
-
 
       # handle all other requests
       handle {
@@ -68,8 +68,8 @@ data:
 
     }
 
-    localhost:8443, gateway:8443 {
-      import handle_path_route_without_auth "/api/ledger" "ledger:3068"
+    localhost:8443, formance-gateway-svc:8443 {
+      import handle_path_route_without_auth "/api/ledger" "formance-ledger:3068"
 
       handle /versions {
         versions {
@@ -92,20 +92,24 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gateway
+  name: formance-gateway
   namespace: nw-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gateway
+      app: formance-gateway
   template:
     metadata:
       labels:
-        app: gateway
+        app: formance-gateway
     spec:
+      hostAliases:
+        - ip: "10.43.208.33"
+          hostnames:
+            - "formance.internal"
       containers:
-        - name: gateway
+        - name: formance-gateway
           image: ghcr.io/formancehq/gateway:v2.0.31
           ports:
             - containerPort: 8080
@@ -123,11 +127,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gateway-svc
+  name: formance-gateway-svc
   namespace: nw-dev
 spec:
   selector:
-    app: gateway
+    app: formance-gateway
   type: ClusterIP
   ports:
     - name: http

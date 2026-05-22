@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: gateway-ingress
+  name: formance-gateway-ingress
   namespace: nw-dev
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: nw-dev-auth-middleware@kubernetescrd
@@ -15,6 +15,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: gateway-svc # Points to the Service above
+                name: formance-gateway-svc # Points to the Service above
                 port:
                   number: 80

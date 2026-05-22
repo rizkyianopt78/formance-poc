@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: console
+  name: formance-console
   namespace: nw-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: console
+      app: formance-console
   template:
     metadata:
       labels:
-        app: console
+        app: formance-console
     spec:
       containers:
         - name: console
@@ -27,7 +27,7 @@ spec:
               # Use internal service URL for SSR — pods cannot reach the cluster's
               # own external ingress (hairpin NAT). The browser proxies all API calls
               # through the Remix SSR loaders so it never uses this URL directly.
-              value: "http://gateway-svc/api"
+              value: "http://formance-gateway-svc/api"
             - name: COOKIE_SECRET
               value: "secret"
             - name: COOKIE_DOMAIN
@@ -40,17 +40,21 @@ spec:
             - name: FEATURE_PAYMENTS
               value: "true"
             - name: FEATURE_RECONCILIATION
-              value: "true"
+              value: "false"
+            # Node.js TLS skip — equivalent of curl -k
+            # Needed if console makes any HTTPS calls to self-signed endpoints
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: console-svc
+  name: formance-console-svc
   namespace: nw-dev
 spec:
   selector:
-    app: console
+    app: formance-console
   type: ClusterIP
   ports:
     - name: http

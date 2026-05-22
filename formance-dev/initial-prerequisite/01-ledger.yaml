@@ -91,7 +91,8 @@ spec:
               echo "Schema ready."
       containers:
         - name: payments
-          image: ghcr.io/formancehq/payments:latest
+          # Latest stable: https://github.com/formancehq/payments/releases/tag/v3.2.0
+          image: ghcr.io/formancehq/payments:v3.2.0
           args:
             - serve
             - --auto-migrate
@@ -150,7 +151,8 @@ spec:
     spec:
       containers:
         - name: reconciliation
-          image: ghcr.io/formancehq/reconciliation:latest
+          # Latest stable: https://github.com/formancehq/reconciliation/releases/tag/v2.2.2
+          image: ghcr.io/formancehq/reconciliation:v2.2.2
           args:
             - serve
             - --auto-migrate

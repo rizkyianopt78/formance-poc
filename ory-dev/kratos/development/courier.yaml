@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-courier
+  namespace: nw-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos-courier
+  template:
+    metadata:
+      labels:
+        app: kratos-courier
+    spec:
+      containers:
+        - name: kratos-courier
+          image: oryd/kratos:v1.1.0
+
+          command:
+            - kratos
+            - courier
+            - watch
+            - --config
+            -  /etc/config/kratos/kratos.yaml
+
+          volumeMounts:
+            - name: kratos-config-volume
+              mountPath: /etc/config/kratos
+              readOnly: true
+            - name: google-mapper-volume
+              mountPath: /etc/config/google-mapper
+              readOnly: true
+            - name: identity-schema-volume
+              mountPath: /etc/config/identity-schema
+              readOnly: true
+            - name: email-templates-volume
+              mountPath: /etc/config/kratos-templates
+              readOnly: true
+
+          env:
+            - name: DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: dsn
+            - name: SECRETS_DEFAULT
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsDefault
+                  optional: true
+            - name: SECRETS_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: secretsCookie
+                  optional: true
+            - name: COURIER_SMTP_CONNECTION_URI
+              valueFrom:
+                secretKeyRef:
+                  name: kratos
+                  key: smtpConnectionUri
+
+      volumes:
+        - name: kratos-config-volume
+          configMap:
+            name: kratos-config
+            defaultMode: 0444
+        - name: google-mapper-volume
+          configMap:
+            name: kratos-google-mapper
+            defaultMode: 0444
+        - name: identity-schema-volume
+          configMap:
+            name: kratos-identity-schema
+            defaultMode: 0444
+        - name: email-templates-volume
+          configMap:
+            name: kratos-email-templates
+            defaultMode: 0444
