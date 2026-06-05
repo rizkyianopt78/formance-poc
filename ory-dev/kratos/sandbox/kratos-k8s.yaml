@@ -431,6 +431,7 @@ spec:
           args:
             - serve
             - all
+            - --watch-courier
             - --config
             - /etc/config/kratos/kratos.yaml
 
